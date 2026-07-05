@@ -83,3 +83,23 @@ class EpisodeCheckIn(db.Model):
             name="uq_user_episode",
         ),
     )
+
+class Friendship(db.Model):
+    """
+    One row per friend request. requester_id sent it, recipient_id received
+    it. status moves pending -> accepted (or gets deleted on decline/remove).
+    Once accepted, either side can see the other's full library.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    requester_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    status = db.Column(db.String(20), default="pending", nullable=False)  # pending | accepted
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    responded_at = db.Column(db.DateTime, nullable=True)
+
+    requester = db.relationship("User", foreign_keys=[requester_id])
+    recipient = db.relationship("User", foreign_keys=[recipient_id])
+
+    __table_args__ = (
+        db.UniqueConstraint("requester_id", "recipient_id", name="uq_friend_pair"),
+    )

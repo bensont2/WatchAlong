@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ friend.username }}'s Library{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ friend.username }}'s Library</h1>
+  <a href="{{ url_for('friends.list_friends') }}" class="btn btn-small">← Back to Friends</a>
+</div>
+
+{% if items %}
+<div class="grid">
+  {% for item in items %}
+  <div class="card">
+    {% if item.poster_path %}
+      <a href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">
+        <img src="{{ item.poster_path }}" alt="{{ item.title }}" class="poster">
+      </a>
+    {% endif %}
+    <div class="card-body">
+      <a class="card-title" href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">{{ item.title }}</a>
+      {% if item.rating %}
+        <div class="stars">{{ "★" * item.rating }}{{ "☆" * (5 - item.rating) }}</div>
+      {% else %}
+        <div class="stars stars-empty">Not rated yet</div>
+      {% endif %}
+      <span class="badge badge-status">{{ item.status.replace("_", " ") | title }}</span>
+      {% if item.comment %}
+        <p class="comment">{{ item.comment }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">{{ friend.username }} hasn't added anything to their library yet.</p>
+{% endif %}
+{% endblock %}

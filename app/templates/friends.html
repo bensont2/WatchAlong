@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Friends{% endblock %}
+{% block content %}
+<h1>Friends</h1>
+
+<section class="rate-section">
+  <h2>Add a Friend</h2>
+  <form method="POST" action="{{ url_for('friends.send_request') }}" class="search-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="username" placeholder="Their username" required>
+    <button type="submit" class="btn btn-primary">Send Request</button>
+  </form>
+</section>
+
+{% if incoming %}
+<section class="rate-section">
+  <h2>Incoming Requests ({{ incoming | length }})</h2>
+  {% for f in incoming %}
+    <div class="friend-row">
+      <span class="friend-name">{{ f.requester.username }}</span>
+      <div class="friend-actions">
+        <form method="POST" action="{{ url_for('friends.accept_request', friendship_id=f.id) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-small btn-primary">Accept</button>
+        </form>
+        <form method="POST" action="{{ url_for('friends.decline_request', friendship_id=f.id) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-small btn-cancel">Decline</button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if outgoing %}
+<section class="rate-section">
+  <h2>Sent Requests ({{ outgoing | length }})</h2>
+  {% for f in outgoing %}
+    <div class="friend-row">
+      <span class="friend-name">{{ f.recipient.username }}</span>
+      <span class="badge badge-status">Pending</span>
+      <form method="POST" action="{{ url_for('friends.remove_friend', friendship_id=f.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-small btn-cancel">Cancel</button>
+      </form>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="rate-section">
+  <h2>Your Friends ({{ friends | length }})</h2>
+  {% if friends %}
+    {% for f in friends %}
+      <div class="friend-row">
+        <span class="friend-name">{{ f.user.username }}</span>
+        <div class="friend-actions">
+          <a href="{{ url_for('friends.friend_library', user_id=f.user.id) }}" class="btn btn-small btn-primary">View Library</a>
+          <form method="POST" action="{{ url_for('friends.remove_friend', friendship_id=f.friendship_id) }}" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small btn-cancel">Remove</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No friends yet. Send a request above to get started.</p>
+  {% endif %}
+</section>
+{% endblock %}

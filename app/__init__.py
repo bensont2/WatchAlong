@@ -22,11 +22,13 @@ def create_app():
     from app.library import library_bp
     from app.shows import shows_bp
     from app.activity import activity_bp
+    from app.friends import friends_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(library_bp)
     app.register_blueprint(shows_bp)
     app.register_blueprint(activity_bp)
+    app.register_blueprint(friends_bp)
 
     from flask import redirect, url_for
     from flask_login import current_user

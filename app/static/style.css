@@ -247,6 +247,18 @@ input[type="text"], input[type="email"], input[type="password"], textarea {
 
 .badge-status { background: rgba(154,156,168,0.15); color: var(--text); margin-left: 6px; }
 
+.friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.friend-row:last-child { border-bottom: none; }
+.friend-name { font-weight: 600; }
+.friend-actions { display: flex; align-items: center; gap: 8px; }
+
 .season-section {
   background: var(--card);
   border: 1px solid var(--border);

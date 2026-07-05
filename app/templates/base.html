@@ -20,6 +20,7 @@
         <a href="{{ url_for('library.view_library') }}">My Library</a>
         <a href="{{ url_for('shows.watchlist') }}">Watchlist</a>
         <a href="{{ url_for('activity.feed') }}">Activity</a>
+        <a href="{{ url_for('friends.list_friends') }}">Friends</a>
         <a href="{{ url_for('shows.search') }}">Search</a>
         <span class="nav-user">{{ current_user.username }}</span>
         <a href="{{ url_for('auth.logout') }}">Logout</a>
