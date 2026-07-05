@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}My Library{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>My Library</h1>
+  <a href="{{ url_for('shows.search') }}" class="btn btn-primary">+ Add a show</a>
+</div>
+
+{% if items %}
+<div class="grid">
+  {% for item in items %}
+  <div class="card">
+    {% if item.poster_path %}
+      <a href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">
+        <img src="{{ item.poster_path }}" alt="{{ item.title }}" class="poster">
+      </a>
+    {% endif %}
+    <div class="card-body">
+      <a class="card-title" href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">{{ item.title }}</a>
+      {% if item.rating %}
+        <div class="stars">{{ "★" * item.rating }}{{ "☆" * (5 - item.rating) }}</div>
+      {% else %}
+        <div class="stars stars-empty">Not rated yet</div>
+      {% endif %}
+      <span class="badge badge-status">{{ item.status.replace("_", " ") | title }}</span>
+      {% if item.comment %}
+        <p class="comment">{{ item.comment }}</p>
+      {% endif %}
+      <span class="badge {{ 'badge-public' if item.is_public else 'badge-private' }}">
+        {{ "Public" if item.is_public else "Private" }}
+      </span>
+      <form method="POST" action="{{ url_for('library.delete_item', item_id=item.id) }}" class="inline-form">
+        <button type="submit" class="btn btn-danger btn-small">Remove</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">Your library is empty. <a href="{{ url_for('shows.search') }}">Search for a show</a> to add one.</p>
+{% endif %}
+{% endblock %}

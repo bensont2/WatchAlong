@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}{{ show.title }}{% endblock %}
+{% block content %}
+
+<div class="detail-header">
+  {% if show.poster_url %}
+    <img src="{{ show.poster_url }}" alt="{{ show.title }}" class="poster poster-large">
+  {% endif %}
+  <div>
+    <h1>{{ show.title }} <span class="year">({{ show.year }})</span></h1>
+    <span class="badge badge-type">{{ "Movie" if show.media_type == "movie" else "TV" }}</span>
+    {% if show.genres %}
+      <p class="genres">{{ show.genres | join(", ") }}</p>
+    {% endif %}
+    <p class="overview">{{ show.overview }}</p>
+
+    {% if show.media_type == "tv" and next_episode %}
+      <div class="next-up">
+        <span class="next-up-label">Next up</span>
+        S{{ "%02d"|format(next_episode.season_number) }}E{{ "%02d"|format(next_episode.episode_number) }}
+        <a href="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=show.tmdb_id, season=next_episode.season_number) }}" class="btn btn-small btn-primary">Go to episode</a>
+      </div>
+    {% elif show.media_type == "tv" and my_item %}
+      <div class="next-up next-up-done">All caught up 🎉</div>
+    {% endif %}
+  </div>
+</div>
+
+<section class="rate-section">
+  <h2>{{ "Update your rating" if my_item and my_item.rating else "Rate this show" }}</h2>
+  <form method="POST" action="{{ url_for('shows.rate_show', media_type=show.media_type, tmdb_id=show.tmdb_id) }}" class="rate-form">
+    <input type="hidden" name="title" value="{{ show.title }}">
+    <input type="hidden" name="poster_path" value="{{ show.poster_url or '' }}">
+
+    <label>Your Rating</label>
+    <div class="star-select">
+      {% for i in range(1, 6) %}
+        <label class="star-radio">
+          <input type="radio" name="rating" value="{{ i }}" {% if my_item and my_item.rating == i %}checked{% endif %}>
+          {{ i }}★
+        </label>
+      {% endfor %}
+    </div>
+
+    <label>Comment (optional)</label>
+    <textarea name="comment" rows="3" placeholder="What did you think?">{{ my_item.comment if my_item else "" }}</textarea>
+
+    <label>Visibility</label>
+    <div class="visibility-select">
+      <label><input type="radio" name="visibility" value="private" {% if not my_item or not my_item.is_public %}checked{% endif %}> Private (only you)</label>
+      <label><input type="radio" name="visibility" value="public" {% if my_item and my_item.is_public %}checked{% endif %}> Public (visible to others)</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">{{ "Save Changes" if my_item else "Save to Library" }}</button>
+  </form>
+</section>
+
+{% if show.media_type == "tv" and show.seasons %}
+<section class="season-section">
+  <div class="season-header">
+    <h2>Episodes</h2>
+    <form method="GET" action="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=show.tmdb_id) }}" class="season-select-form">
+      <select name="season" onchange="this.form.submit()">
+        {% for s in show.seasons %}
+          <option value="{{ s.season_number }}" {% if s.season_number == selected_season %}selected{% endif %}>
+            {{ s.name or "Season " + s.season_number|string }} ({{ s.episode_count }} eps)
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  {% if episodes %}
+  <div class="episode-list">
+    {% for ep in episodes %}
+    <div class="episode-block" data-season="{{ selected_season }}" data-episode="{{ ep.episode_number }}">
+      <div class="episode-row">
+        {% if ep.still_url %}
+          <img src="{{ ep.still_url }}" alt="" class="episode-still">
+        {% else %}
+          <div class="episode-still episode-still-placeholder"></div>
+        {% endif %}
+        <div class="episode-info">
+          <div class="episode-title">
+            <span class="episode-num">E{{ "%02d"|format(ep.episode_number) }}</span>
+            {{ ep.name }}
+          </div>
+          {% if ep.air_date %}<span class="episode-air-date">{{ ep.air_date }}</span>{% endif %}
+        </div>
+        <label class="episode-watched-toggle">
+          <input
+            type="checkbox"
+            class="episode-checkbox"
+            {% if ep.episode_number in watched_set %}checked{% endif %}
+            data-season="{{ selected_season }}"
+            data-episode="{{ ep.episode_number }}"
+            data-episode-name="{{ ep.name }}"
+            data-show-title="{{ show.title }}"
+            data-poster-path="{{ show.poster_url or '' }}"
+          >
+          Watched
+        </label>
+      </div>
+      <div class="episode-comment-wrap" {% if ep.episode_number not in watched_set %}hidden{% endif %}>
+        <textarea
+          class="episode-comment-input"
+          rows="2"
+          placeholder="Thoughts on this episode..."
+          data-season="{{ selected_season }}"
+          data-episode="{{ ep.episode_number }}"
+        >{{ comments_by_episode.get(ep.episode_number, "") }}</textarea>
+        <button type="button" class="btn btn-small btn-primary episode-comment-save">Save</button>
+        <span class="episode-comment-status"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="public-comments">
+  <h2>Community Ratings &amp; Comments ({{ public_items | length }})</h2>
+  {% if public_items %}
+    {% for item, username in public_items %}
+      <div class="comment-card">
+        <div class="comment-header">
+          <strong>{{ "You" if item.user_id == current_user.id else username }}</strong>
+          {% if item.rating %}
+            <span class="stars">{{ "★" * item.rating }}{{ "☆" * (5 - item.rating) }}</span>
+          {% endif %}
+        </div>
+        {% if item.comment %}
+          <p class="comment">{{ item.comment }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No public comments yet. Be the first!</p>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.episode-checkbox').forEach(function (box) {
+  box.addEventListener('change', function () {
+    const payload = {
+      season_number: parseInt(box.dataset.season, 10),
+      episode_number: parseInt(box.dataset.episode, 10),
+      episode_name: box.dataset.episodeName,
+      show_title: box.dataset.showTitle,
+      poster_path: box.dataset.posterPath,
+    };
+
+    fetch('{{ url_for("shows.toggle_episode", tmdb_id=show.tmdb_id) }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        box.checked = !!data.watched;
+        const block = box.closest('.episode-block');
+        const commentWrap = block.querySelector('.episode-comment-wrap');
+        commentWrap.hidden = !box.checked;
+      })
+      .catch(function (err) {
+        console.error(err);
+        box.checked = !box.checked; // revert on failure
+      });
+  });
+});
+
+document.querySelectorAll('.episode-comment-save').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    const block = btn.closest('.episode-block');
+    const textarea = block.querySelector('.episode-comment-input');
+    const status = block.querySelector('.episode-comment-status');
+
+    fetch('{{ url_for("shows.comment_episode", tmdb_id=show.tmdb_id) }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        season_number: parseInt(textarea.dataset.season, 10),
+        episode_number: parseInt(textarea.dataset.episode, 10),
+        comment: textarea.value,
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Save failed'); });
+        return res.json();
+      })
+      .then(function () {
+        status.textContent = 'Saved';
+        status.classList.remove('episode-comment-error');
+        setTimeout(function () { status.textContent = ''; }, 2000);
+      })
+      .catch(function (err) {
+        status.textContent = err.message;
+        status.classList.add('episode-comment-error');
+      });
+  });
+});
+</script>
+{% endblock %}

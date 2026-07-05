@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<h1>Search Shows &amp; Movies</h1>
+
+<form method="GET" action="{{ url_for('shows.search') }}" class="search-form" id="search-form" autocomplete="off">
+  <div class="search-input-wrap">
+    <input type="text" name="q" id="search-input" value="{{ query }}" placeholder="e.g. Breaking Bad" autofocus autocomplete="off">
+    <div id="suggest-dropdown" class="suggest-dropdown" hidden></div>
+  </div>
+  <button type="submit" class="btn btn-primary">Search</button>
+</form>
+
+{% if query and not results %}
+  <p class="empty-state">No results for "{{ query }}".</p>
+{% endif %}
+
+<div class="grid">
+  {% for r in results %}
+  <a class="card search-card" href="{{ url_for('shows.show_detail', media_type=r.media_type, tmdb_id=r.tmdb_id) }}">
+    {% if r.poster_url %}
+      <img src="{{ r.poster_url }}" alt="{{ r.title }}" class="poster">
+    {% else %}
+      <div class="poster poster-placeholder">No Image</div>
+    {% endif %}
+    <div class="card-body">
+      <div class="card-title">{{ r.title }} <span class="year">({{ r.year }})</span></div>
+      <span class="badge badge-type">{{ "Movie" if r.media_type == "movie" else "TV" }}</span>
+      <p class="comment">{{ r.overview[:140] }}{% if r.overview|length > 140 %}…{% endif %}</p>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const input = document.getElementById('search-input');
+  const dropdown = document.getElementById('suggest-dropdown');
+  let debounceTimer = null;
+  let activeController = null;
+
+  function closeDropdown() {
+    dropdown.hidden = true;
+    dropdown.innerHTML = '';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function renderResults(results) {
+    if (!results.length) {
+      closeDropdown();
+      return;
+    }
+    dropdown.innerHTML = results.map(function (r) {
+      const posterHtml = r.poster_url
+        ? '<img src="' + r.poster_url + '" alt="">'
+        : '<div class="suggest-poster-placeholder"></div>';
+      return (
+        '<a class="suggest-item" href="/show/' + r.media_type + '/' + r.tmdb_id + '">' +
+          posterHtml +
+          '<div class="suggest-info">' +
+            '<span class="suggest-title">' + escapeHtml(r.title) + '</span>' +
+            '<span class="suggest-meta">' + r.year + ' · ' + (r.media_type === 'movie' ? 'Movie' : 'TV') + '</span>' +
+          '</div>' +
+        '</a>'
+      );
+    }).join('');
+    dropdown.hidden = false;
+  }
+
+  input.addEventListener('input', function () {
+    const q = input.value.trim();
+    clearTimeout(debounceTimer);
+
+    if (q.length < 2) {
+      closeDropdown();
+      return;
+    }
+
+    debounceTimer = setTimeout(function () {
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+
+      fetch('/search/suggest?q=' + encodeURIComponent(q), { signal: activeController.signal })
+        .then(function (res) { return res.json(); })
+        .then(renderResults)
+        .catch(function (err) {
+          if (err.name !== 'AbortError') console.error(err);
+        });
+    }, 250);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.search-input-wrap')) {
+      closeDropdown();
+    }
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeDropdown();
+  });
+})();
+</script>
+{% endblock %}
+

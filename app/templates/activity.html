@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<h1>Activity Feed</h1>
+<p class="feed-subtitle">Public activity from everyone. Private ratings and episodes don't show up here.</p>
+
+{% if events %}
+<div class="feed">
+  {% for e in events %}
+  <div class="feed-item">
+    {% if e.type == "episode" %}
+      <span class="feed-icon">📺</span>
+      <div class="feed-text">
+        <strong>{{ e.username }}</strong> watched
+        <a href="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=e.tmdb_id, season=e.season_number) }}">
+          S{{ "%02d"|format(e.season_number) }}E{{ "%02d"|format(e.episode_number) }}
+          {% if e.episode_name %}&mdash; {{ e.episode_name }}{% endif %}
+        </a>
+        of <strong>{{ e.title }}</strong>
+        {% if e.comment %}<p class="comment">"{{ e.comment }}"</p>{% endif %}
+      </div>
+    {% else %}
+      <span class="feed-icon">⭐</span>
+      <div class="feed-text">
+        <strong>{{ e.username }}</strong> rated
+        <a href="{{ url_for('shows.show_detail', media_type=e.media_type, tmdb_id=e.tmdb_id) }}">{{ e.title }}</a>
+        <span class="stars">{{ "★" * e.rating }}{{ "☆" * (5 - e.rating) }}</span>
+        {% if e.comment %}<p class="comment">"{{ e.comment }}"</p>{% endif %}
+      </div>
+    {% endif %}
+    <span class="feed-time">{{ e.timestamp.strftime("%b %d, %I:%M %p") }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No public activity yet. Watch an episode or leave a public rating to start the feed.</p>
+{% endif %}
+{% endblock %}

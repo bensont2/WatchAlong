@@ -1,0 +1,110 @@
+import requests
+from flask import current_app
+
+POSTER_BASE = "https://image.tmdb.org/t/p/w342"
+
+
+def _headers():
+    return {
+        "Authorization": f"Bearer {current_app.config['TMDB_ACCESS_TOKEN']}",
+        "accept": "application/json",
+    }
+
+
+def search_shows(query):
+    """
+    Searches movies + TV in one call. Returns a normalized list:
+    [{tmdb_id, media_type, title, year, poster_url, overview}, ...]
+    """
+    if not query:
+        return []
+
+    url = f"{current_app.config['TMDB_BASE_URL']}/search/multi"
+    resp = requests.get(
+        url, headers=_headers(), params={"query": query, "include_adult": "false"}
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+
+    normalized = []
+    for r in results:
+        media_type = r.get("media_type")
+        if media_type not in ("movie", "tv"):
+            continue  # skip "person" results etc.
+
+        title = r.get("title") or r.get("name")
+        date = r.get("release_date") or r.get("first_air_date") or ""
+        poster_path = r.get("poster_path")
+
+        normalized.append({
+            "tmdb_id": r["id"],
+            "media_type": media_type,
+            "title": title,
+            "year": date[:4] if date else "N/A",
+            "poster_url": f"{POSTER_BASE}{poster_path}" if poster_path else None,
+            "overview": r.get("overview", ""),
+        })
+    return normalized
+
+
+def get_show_details(media_type, tmdb_id):
+    """
+    Fetches full details for a single movie/tv show for the detail page.
+    For TV shows, includes the season list (season_number, episode_count).
+    """
+    url = f"{current_app.config['TMDB_BASE_URL']}/{media_type}/{tmdb_id}"
+    resp = requests.get(url, headers=_headers())
+    resp.raise_for_status()
+    data = resp.json()
+
+    title = data.get("title") or data.get("name")
+    date = data.get("release_date") or data.get("first_air_date") or ""
+    poster_path = data.get("poster_path")
+
+    result = {
+        "tmdb_id": tmdb_id,
+        "media_type": media_type,
+        "title": title,
+        "year": date[:4] if date else "N/A",
+        "poster_url": f"{POSTER_BASE}{poster_path}" if poster_path else None,
+        "overview": data.get("overview", ""),
+        "genres": [g["name"] for g in data.get("genres", [])],
+    }
+
+    if media_type == "tv":
+        # Skip "season 0" (specials) in the normal season list
+        result["seasons"] = [
+            {
+                "season_number": s["season_number"],
+                "name": s.get("name"),
+                "episode_count": s.get("episode_count", 0),
+                "air_date": s.get("air_date"),
+            }
+            for s in data.get("seasons", [])
+            if s["season_number"] > 0
+        ]
+
+    return result
+
+
+def get_season_episodes(tv_id, season_number):
+    """
+    Fetches the episode list for one season of a TV show.
+    Returns [{episode_number, name, air_date, overview, still_url}, ...]
+    """
+    url = f"{current_app.config['TMDB_BASE_URL']}/tv/{tv_id}/season/{season_number}"
+    resp = requests.get(url, headers=_headers())
+    resp.raise_for_status()
+    data = resp.json()
+
+    episodes = []
+    for ep in data.get("episodes", []):
+        still_path = ep.get("still_path")
+        episodes.append({
+            "episode_number": ep["episode_number"],
+            "name": ep.get("name"),
+            "air_date": ep.get("air_date"),
+            "overview": ep.get("overview", ""),
+            "still_url": f"{POSTER_BASE}{still_path}" if still_path else None,
+        })
+    return episodes
