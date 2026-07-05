@@ -84,7 +84,11 @@ def show_detail(media_type, tmdb_id):
             user_id=current_user.id, tmdb_show_id=tmdb_id, season_number=selected_season
         ).all()
         watched_set = {c.episode_number for c in season_checkins}
-        comments_by_episode = {c.episode_number: c.comment for c in season_checkins if c.comment}
+        comments_by_episode = {
+            c.episode_number: {"comment": c.comment, "is_public": c.is_public}
+            for c in season_checkins
+            if c.comment
+        }
 
         next_episode = _next_episode_for(current_user.id, tmdb_id, details["seasons"])
 
@@ -106,7 +110,7 @@ def show_detail(media_type, tmdb_id):
 def toggle_episode(tmdb_id):
     """
     AJAX endpoint. Toggles a single episode watched/unwatched.
-    Body (JSON): {season_number, episode_number, episode_name, show_title, watched}
+    Body (JSON): {season_number, episode_number, episode_name, show_title}
     """
     payload = request.get_json(silent=True) or {}
     season_number = payload.get("season_number")
@@ -122,7 +126,6 @@ def toggle_episode(tmdb_id):
         episode_number=episode_number,
     ).first()
 
-    # Visibility follows the show's library entry, defaulting to private
     library_item = LibraryItem.query.filter_by(
         user_id=current_user.id, tmdb_id=tmdb_id, media_type="tv"
     ).first()
@@ -144,8 +147,6 @@ def toggle_episode(tmdb_id):
     )
     db.session.add(checkin)
 
-    # Marking episodes watched implies you're actively watching the show --
-    # auto-create a library entry (without a rating) if one doesn't exist yet.
     if not library_item:
         library_item = LibraryItem(
             user_id=current_user.id,
@@ -165,15 +166,16 @@ def toggle_episode(tmdb_id):
 @login_required
 def comment_episode(tmdb_id):
     """
-    AJAX endpoint. Saves/updates a comment on a specific episode.
-    The episode must already be checked in (watched) -- comments are tied
-    to an EpisodeCheckIn row, not stored independently.
-    Body (JSON): {season_number, episode_number, comment}
+    AJAX endpoint used by the inline comment box on the show detail page.
+    Saves/updates a comment on a specific episode, along with its own
+    public/private visibility. The episode must already be checked in.
+    Body (JSON): {season_number, episode_number, comment, is_public}
     """
     payload = request.get_json(silent=True) or {}
     season_number = payload.get("season_number")
     episode_number = payload.get("episode_number")
     comment_text = (payload.get("comment") or "").strip()
+    is_public = bool(payload.get("is_public"))
 
     if season_number is None or episode_number is None:
         return jsonify({"error": "season_number and episode_number are required"}), 400
@@ -189,8 +191,9 @@ def comment_episode(tmdb_id):
         return jsonify({"error": "Mark the episode watched before commenting on it."}), 400
 
     checkin.comment = comment_text or None
+    checkin.is_public = is_public
     db.session.commit()
-    return jsonify({"comment": checkin.comment})
+    return jsonify({"comment": checkin.comment, "is_public": checkin.is_public})
 
 
 @shows_bp.route("/show/<media_type>/<int:tmdb_id>/status", methods=["POST"])
@@ -263,20 +266,18 @@ def rate_show(media_type, tmdb_id):
         )
         db.session.add(item)
 
-    # Keep this show's episode check-ins in sync with its visibility setting
-    if media_type == "tv":
-        EpisodeCheckIn.query.filter_by(
-            user_id=current_user.id, tmdb_show_id=tmdb_id
-        ).update({"is_public": is_public})
+    # Note: episode-level visibility is controlled per-episode (see
+    # comment_episode / save_episode_comment) and is no longer overwritten
+    # by the show-level rating's visibility setting.
 
     db.session.commit()
     flash("Saved to your library.", "success")
     return redirect(url_for("shows.show_detail", media_type=media_type, tmdb_id=tmdb_id))
 
 
-@shows_bp.route("/upcoming")
+@shows_bp.route("/watchlist")
 @login_required
-def upcoming():
+def watchlist():
     """
     Shows the next unwatched episode for every TV show you're tracking
     (excluding dropped shows). Shows you haven't touched in 30+ days get
@@ -296,12 +297,26 @@ def upcoming():
         try:
             details = tmdb.get_show_details("tv", item.tmdb_id)
         except Exception:
-            continue  # skip shows TMDB can't currently return details for
+            continue
 
         seasons = details.get("seasons", [])
         next_episode = _next_episode_for(current_user.id, item.tmdb_id, seasons)
         if not next_episode:
-            continue  # fully caught up on everything released so far
+            continue
+
+        episode_name = None
+        still_url = None
+        try:
+            season_episodes = tmdb.get_season_episodes(item.tmdb_id, next_episode["season_number"])
+            match = next(
+                (e for e in season_episodes if e["episode_number"] == next_episode["episode_number"]),
+                None,
+            )
+            if match:
+                episode_name = match.get("name")
+                still_url = match.get("still_url")
+        except Exception:
+            pass
 
         last_checkin = (
             EpisodeCheckIn.query.filter_by(user_id=current_user.id, tmdb_show_id=item.tmdb_id)
@@ -314,6 +329,8 @@ def upcoming():
         entry = {
             "item": item,
             "next_episode": next_episode,
+            "episode_name": episode_name,
+            "still_url": still_url,
             "days_since": days_since,
             "poster_url": details.get("poster_url") or item.poster_path,
         }
@@ -324,3 +341,94 @@ def upcoming():
     stale.sort(key=lambda e: -e["days_since"])
 
     return render_template("watchlist.html", continuing=continuing, stale=stale)
+
+
+@shows_bp.route("/show/tv/<int:tmdb_id>/season/<int:season_number>/episode/<int:episode_number>")
+@login_required
+def episode_detail(tmdb_id, season_number, episode_number):
+    """
+    Dedicated page for a single episode. This is where the "mark watched ->
+    leave a comment" flow from the Watchlist banner lands.
+    """
+    details = tmdb.get_show_details("tv", tmdb_id)
+    show_title = details.get("title", "")
+
+    episodes = tmdb.get_season_episodes(tmdb_id, season_number)
+    episode = next((e for e in episodes if e["episode_number"] == episode_number), None)
+    if episode is None:
+        flash("Episode not found.", "error")
+        return redirect(url_for("shows.show_detail", media_type="tv", tmdb_id=tmdb_id, season=season_number))
+
+    checkin = EpisodeCheckIn.query.filter_by(
+        user_id=current_user.id,
+        tmdb_show_id=tmdb_id,
+        season_number=season_number,
+        episode_number=episode_number,
+    ).first()
+
+    # Public comments on this specific episode, from everyone (your own
+    # pinned first, labeled "You")
+    public_checkins = (
+        db.session.query(EpisodeCheckIn, User.username)
+        .join(User, EpisodeCheckIn.user_id == User.id)
+        .filter(
+            EpisodeCheckIn.tmdb_show_id == tmdb_id,
+            EpisodeCheckIn.season_number == season_number,
+            EpisodeCheckIn.episode_number == episode_number,
+            EpisodeCheckIn.is_public.is_(True),
+            EpisodeCheckIn.comment.isnot(None),
+        )
+        .order_by(
+            (EpisodeCheckIn.user_id == current_user.id).desc(),
+            EpisodeCheckIn.watched_at.desc(),
+        )
+        .all()
+    )
+
+    return render_template(
+        "episode_detail.html",
+        show_title=show_title,
+        tmdb_id=tmdb_id,
+        season_number=season_number,
+        episode_number=episode_number,
+        episode=episode,
+        checkin=checkin,
+        public_checkins=public_checkins,
+    )
+
+
+@shows_bp.route(
+    "/show/tv/<int:tmdb_id>/season/<int:season_number>/episode/<int:episode_number>/comment",
+    methods=["POST"],
+)
+@login_required
+def save_episode_comment(tmdb_id, season_number, episode_number):
+    """
+    Form-based save for the episode detail page's comment box (public or
+    private). The episode must already be checked in.
+    """
+    comment_text = request.form.get("comment", "").strip()
+    is_public = request.form.get("visibility") == "public"
+
+    checkin = EpisodeCheckIn.query.filter_by(
+        user_id=current_user.id,
+        tmdb_show_id=tmdb_id,
+        season_number=season_number,
+        episode_number=episode_number,
+    ).first()
+
+    if not checkin:
+        flash("Mark the episode watched before commenting on it.", "error")
+        return redirect(url_for(
+            "shows.episode_detail", tmdb_id=tmdb_id,
+            season_number=season_number, episode_number=episode_number,
+        ))
+
+    checkin.comment = comment_text or None
+    checkin.is_public = is_public
+    db.session.commit()
+    flash("Comment saved.", "success")
+    return redirect(url_for(
+        "shows.episode_detail", tmdb_id=tmdb_id,
+        season_number=season_number, episode_number=episode_number,
+    ))

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ show_title }} - S{{ "%02d"|format(season_number) }}E{{ "%02d"|format(episode_number) }}{% endblock %}
+{% block content %}
+
+<div class="detail-header">
+  {% if episode.still_url %}
+    <img src="{{ episode.still_url }}" alt="" class="poster poster-large">
+  {% endif %}
+  <div>
+    <span class="badge badge-type">TV</span>
+    <h1>{{ show_title }}</h1>
+    <h2 class="episode-detail-subtitle">
+      S{{ "%02d"|format(season_number) }}E{{ "%02d"|format(episode_number) }} &mdash; {{ episode.name }}
+    </h2>
+    {% if episode.air_date %}<p class="episode-air-date">{{ episode.air_date }}</p>{% endif %}
+    <p class="overview">{{ episode.overview }}</p>
+  </div>
+</div>
+
+{% if checkin %}
+  <div class="next-up next-up-done">✓ Marked watched</div>
+
+  <section class="rate-section">
+    <h2>Your comment on this episode</h2>
+    <form method="POST" action="{{ url_for('shows.save_episode_comment', tmdb_id=tmdb_id, season_number=season_number, episode_number=episode_number) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Comment (optional)</label>
+      <textarea name="comment" rows="4" placeholder="What did you think of this episode?">{{ checkin.comment or "" }}</textarea>
+
+      <label>Visibility</label>
+      <div class="visibility-select">
+        <label><input type="radio" name="visibility" value="private" {% if not checkin.is_public %}checked{% endif %}> Private (only you)</label>
+        <label><input type="radio" name="visibility" value="public" {% if checkin.is_public %}checked{% endif %}> Public (visible to others)</label>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Save Comment</button>
+    </form>
+  </section>
+{% else %}
+  <section class="rate-section">
+    <p>You haven't marked this episode watched yet.</p>
+    <button
+      type="button"
+      id="mark-watched-btn"
+      class="btn btn-primary"
+      data-checkin-url="{{ url_for('shows.toggle_episode', tmdb_id=tmdb_id) }}"
+      data-season="{{ season_number }}"
+      data-episode="{{ episode_number }}"
+      data-episode-name="{{ episode.name }}"
+      data-show-title="{{ show_title }}"
+    >Mark as Watched</button>
+  </section>
+{% endif %}
+
+<section class="public-comments">
+  <h2>Community Comments ({{ public_checkins | length }})</h2>
+  {% if public_checkins %}
+    {% for c, username in public_checkins %}
+      <div class="comment-card">
+        <div class="comment-header">
+          <strong>{{ "You" if c.user_id == current_user.id else username }}</strong>
+        </div>
+        <p class="comment">{{ c.comment }}</p>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No public comments on this episode yet. Be the first!</p>
+  {% endif %}
+</section>
+
+<a href="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=tmdb_id, season=season_number) }}" class="btn btn-small">← Back to full episode list</a>
+
+{% endblock %}
+
+{% block scripts %}
+{% if not checkin %}
+<script>
+var btn = document.getElementById('mark-watched-btn');
+btn.addEventListener('click', function () {
+  fetch(btn.dataset.checkinUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+    body: JSON.stringify({
+      season_number: parseInt(btn.dataset.season, 10),
+      episode_number: parseInt(btn.dataset.episode, 10),
+      episode_name: btn.dataset.episodeName,
+      show_title: btn.dataset.showTitle,
+      poster_path: '',
+    }),
+  })
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      if (data.watched) window.location.reload();
+    })
+    .catch(console.error);
+});
+</script>
+{% endif %}
+{% endblock %}

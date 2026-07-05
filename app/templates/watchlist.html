@@ -4,23 +4,12 @@
 <h1>Watchlist</h1>
 <p class="feed-subtitle">Your next episode for every show you're tracking.</p>
 
-<section class="Watchlist-section">
+<section class="watchlist-section">
   <h2>Continue Watching</h2>
   {% if continuing %}
-  <div class="grid">
+  <div class="watch-banner-list">
     {% for e in continuing %}
-    <a class="card Watchlist-card" href="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=e.item.tmdb_id, season=e.next_episode.season_number) }}">
-      {% if e.poster_url %}
-        <img src="{{ e.poster_url }}" alt="{{ e.item.title }}" class="poster">
-      {% else %}
-        <div class="poster poster-placeholder">No Image</div>
-      {% endif %}
-      <div class="card-body">
-        <div class="card-title">{{ e.item.title }}</div>
-        <span class="badge badge-type">S{{ "%02d"|format(e.next_episode.season_number) }}E{{ "%02d"|format(e.next_episode.episode_number) }}</span>
-        <span class="days-since">{{ "Not started yet" if e.days_since == 0 and e.item.added_at else (e.days_since|string + " day" + ("s" if e.days_since != 1 else "") + " since last episode") }}</span>
-      </div>
-    </a>
+    {% include "_watch_banner.html" %}
     {% endfor %}
   </div>
   {% else %}
@@ -28,27 +17,52 @@
   {% endif %}
 </section>
 
-<section class="Watchlist-section">
+<section class="watchlist-section">
   <h2>Haven't Watched in a While (30+ days)</h2>
   {% if stale %}
-  <div class="grid">
+  <div class="watch-banner-list">
     {% for e in stale %}
-    <a class="card Watchlist-card Watchlist-stale" href="{{ url_for('shows.show_detail', media_type='tv', tmdb_id=e.item.tmdb_id, season=e.next_episode.season_number) }}">
-      {% if e.poster_url %}
-        <img src="{{ e.poster_url }}" alt="{{ e.item.title }}" class="poster">
-      {% else %}
-        <div class="poster poster-placeholder">No Image</div>
-      {% endif %}
-      <div class="card-body">
-        <div class="card-title">{{ e.item.title }}</div>
-        <span class="badge badge-type">S{{ "%02d"|format(e.next_episode.season_number) }}E{{ "%02d"|format(e.next_episode.episode_number) }}</span>
-        <span class="days-since days-since-stale">{{ e.days_since }} days since last episode</span>
-      </div>
-    </a>
+    {% include "_watch_banner.html" %}
     {% endfor %}
   </div>
   {% else %}
     <p class="empty-state">Nothing stale right now.</p>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.watch-banner-check').forEach(function (btn) {
+  btn.addEventListener('click', function (evt) {
+    evt.preventDefault();
+    const banner = btn.closest('.watch-banner');
+    btn.disabled = true;
+
+    fetch(banner.dataset.checkinUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({
+        season_number: parseInt(banner.dataset.season, 10),
+        episode_number: parseInt(banner.dataset.episode, 10),
+        episode_name: banner.dataset.episodeName,
+        show_title: banner.dataset.showTitle,
+        poster_path: banner.dataset.posterPath,
+      }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.watched) {
+          window.location.href = banner.dataset.episodeUrl;
+        } else {
+          btn.disabled = false;
+        }
+      })
+      .catch(function (err) {
+        console.error(err);
+        btn.disabled = false;
+      });
+  });
+});
+</script>
 {% endblock %}

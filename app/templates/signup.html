@@ -4,6 +4,7 @@
 <div class="auth-card">
   <h1>Create Account</h1>
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Username</label>
     <input type="text" name="username" required autofocus>
 

@@ -30,6 +30,7 @@
         {{ "Public" if item.is_public else "Private" }}
       </span>
       <form method="POST" action="{{ url_for('library.delete_item', item_id=item.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-danger btn-small">Remove</button>
       </form>
     </div>

@@ -29,6 +29,7 @@
 <section class="rate-section">
   <h2>{{ "Update your rating" if my_item and my_item.rating else "Rate this show" }}</h2>
   <form method="POST" action="{{ url_for('shows.rate_show', media_type=show.media_type, tmdb_id=show.tmdb_id) }}" class="rate-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="title" value="{{ show.title }}">
     <input type="hidden" name="poster_path" value="{{ show.poster_url or '' }}">
 
@@ -73,8 +74,8 @@
   {% if episodes %}
   <div class="episode-list">
     {% for ep in episodes %}
-    <div class="episode-block" data-season="{{ selected_season }}" data-episode="{{ ep.episode_number }}">
-      <div class="episode-row">
+    <div class="episode-row">
+      <a class="episode-link" href="{{ url_for('shows.episode_detail', tmdb_id=show.tmdb_id, season_number=selected_season, episode_number=ep.episode_number) }}">
         {% if ep.still_url %}
           <img src="{{ ep.still_url }}" alt="" class="episode-still">
         {% else %}
@@ -87,31 +88,20 @@
           </div>
           {% if ep.air_date %}<span class="episode-air-date">{{ ep.air_date }}</span>{% endif %}
         </div>
-        <label class="episode-watched-toggle">
-          <input
-            type="checkbox"
-            class="episode-checkbox"
-            {% if ep.episode_number in watched_set %}checked{% endif %}
-            data-season="{{ selected_season }}"
-            data-episode="{{ ep.episode_number }}"
-            data-episode-name="{{ ep.name }}"
-            data-show-title="{{ show.title }}"
-            data-poster-path="{{ show.poster_url or '' }}"
-          >
-          Watched
-        </label>
-      </div>
-      <div class="episode-comment-wrap" {% if ep.episode_number not in watched_set %}hidden{% endif %}>
-        <textarea
-          class="episode-comment-input"
-          rows="2"
-          placeholder="Thoughts on this episode..."
+      </a>
+      <label class="episode-watched-toggle">
+        <input
+          type="checkbox"
+          class="episode-checkbox"
+          {% if ep.episode_number in watched_set %}checked{% endif %}
           data-season="{{ selected_season }}"
           data-episode="{{ ep.episode_number }}"
-        >{{ comments_by_episode.get(ep.episode_number, "") }}</textarea>
-        <button type="button" class="btn btn-small btn-primary episode-comment-save">Save</button>
-        <span class="episode-comment-status"></span>
-      </div>
+          data-episode-name="{{ ep.name }}"
+          data-show-title="{{ show.title }}"
+          data-poster-path="{{ show.poster_url or '' }}"
+        >
+        Watched
+      </label>
     </div>
     {% endfor %}
   </div>
@@ -156,50 +146,16 @@ document.querySelectorAll('.episode-checkbox').forEach(function (box) {
 
     fetch('{{ url_for("shows.toggle_episode", tmdb_id=show.tmdb_id) }}', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify(payload),
     })
       .then(function (res) { return res.json(); })
       .then(function (data) {
         box.checked = !!data.watched;
-        const block = box.closest('.episode-block');
-        const commentWrap = block.querySelector('.episode-comment-wrap');
-        commentWrap.hidden = !box.checked;
       })
       .catch(function (err) {
         console.error(err);
         box.checked = !box.checked; // revert on failure
-      });
-  });
-});
-
-document.querySelectorAll('.episode-comment-save').forEach(function (btn) {
-  btn.addEventListener('click', function () {
-    const block = btn.closest('.episode-block');
-    const textarea = block.querySelector('.episode-comment-input');
-    const status = block.querySelector('.episode-comment-status');
-
-    fetch('{{ url_for("shows.comment_episode", tmdb_id=show.tmdb_id) }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        season_number: parseInt(textarea.dataset.season, 10),
-        episode_number: parseInt(textarea.dataset.episode, 10),
-        comment: textarea.value,
-      }),
-    })
-      .then(function (res) {
-        if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Save failed'); });
-        return res.json();
-      })
-      .then(function () {
-        status.textContent = 'Saved';
-        status.classList.remove('episode-comment-error');
-        setTimeout(function () { status.textContent = ''; }, 2000);
-      })
-      .catch(function (err) {
-        status.textContent = err.message;
-        status.classList.add('episode-comment-error');
       });
   });
 });

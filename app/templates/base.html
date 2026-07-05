@@ -4,15 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Movie Tracker{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+  <script>
+    function getCsrfToken() {
+      return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    }
+  </script>
   <nav class="navbar">
     <a class="brand" href="{{ url_for('library.view_library') if current_user.is_authenticated else url_for('auth.login') }}">🎬 Movie Tracker</a>
     {% if current_user.is_authenticated %}
       <div class="nav-links">
         <a href="{{ url_for('library.view_library') }}">My Library</a>
-        <a href="{{ url_for('shows.upcoming') }}">Watchlist</a>
+        <a href="{{ url_for('shows.watchlist') }}">Watchlist</a>
         <a href="{{ url_for('activity.feed') }}">Activity</a>
         <a href="{{ url_for('shows.search') }}">Search</a>
         <span class="nav-user">{{ current_user.username }}</span>

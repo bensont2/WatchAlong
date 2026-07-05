@@ -1,0 +1,32 @@
+<div class="watch-banner"
+     data-checkin-url="{{ url_for('shows.toggle_episode', tmdb_id=e.item.tmdb_id) }}"
+     data-episode-url="{{ url_for('shows.episode_detail', tmdb_id=e.item.tmdb_id, season_number=e.next_episode.season_number, episode_number=e.next_episode.episode_number) }}"
+     data-season="{{ e.next_episode.season_number }}"
+     data-episode="{{ e.next_episode.episode_number }}"
+     data-episode-name="{{ e.episode_name or '' }}"
+     data-show-title="{{ e.item.title }}"
+     data-poster-path="{{ e.poster_url or '' }}">
+
+  <a class="watch-banner-link" href="{{ url_for('shows.episode_detail', tmdb_id=e.item.tmdb_id, season_number=e.next_episode.season_number, episode_number=e.next_episode.episode_number) }}">
+    {% if e.still_url %}
+      <img src="{{ e.still_url }}" alt="" class="watch-banner-still">
+    {% elif e.poster_url %}
+      <img src="{{ e.poster_url }}" alt="" class="watch-banner-still">
+    {% else %}
+      <div class="watch-banner-still watch-banner-still-placeholder"></div>
+    {% endif %}
+
+    <div class="watch-banner-info">
+      <span class="watch-banner-title">{{ e.item.title }}</span>
+      <span class="watch-banner-episode">
+        S{{ "%02d"|format(e.next_episode.season_number) }}E{{ "%02d"|format(e.next_episode.episode_number) }}
+        {% if e.episode_name %}&mdash; {{ e.episode_name }}{% endif %}
+      </span>
+      <span class="watch-banner-days {{ 'watch-banner-days-stale' if e.days_since >= 30 }}">
+        {{ e.days_since }} day{{ "s" if e.days_since != 1 }} since last episode
+      </span>
+    </div>
+  </a>
+
+  <button type="button" class="watch-banner-check" title="Mark episode watched">✓</button>
+</div>
