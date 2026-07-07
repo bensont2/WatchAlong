@@ -103,3 +103,22 @@ class Friendship(db.Model):
     __table_args__ = (
         db.UniqueConstraint("requester_id", "recipient_id", name="uq_friend_pair"),
     )
+class ShowMetaCache(db.Model):
+    """
+    Local cache of TMDB show-level data (poster + season list) so pages
+    like Watchlist don't have to re-fetch every tracked show from TMDB on
+    every single page load. Refreshed after CACHE_TTL_HOURS.
+    """
+    tmdb_id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255))
+    poster_url = db.Column(db.String(255))
+    seasons_json = db.Column(db.Text)  # JSON list of {season_number, episode_count, ...}
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class SeasonMetaCache(db.Model):
+    """Local cache of one season's episode list (name/still per episode)."""
+    tmdb_id = db.Column(db.Integer, primary_key=True)
+    season_number = db.Column(db.Integer, primary_key=True)
+    episodes_json = db.Column(db.Text)  # JSON list of episode dicts
+    fetched_at = db.Column(db.DateTime, default=datetime.utcnow)

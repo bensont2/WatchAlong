@@ -7,6 +7,7 @@ from app.shows import shows_bp
 from app.extensions import db
 from app.models import LibraryItem, EpisodeCheckIn, User
 from app.services import tmdb
+from app.services import tmdb_cache
 
 
 @shows_bp.route("/search")
@@ -29,21 +30,31 @@ def search_suggest():
 
 def _next_episode_for(user_id, tv_id, seasons):
     """
-    Figures out the next unwatched episode for a show, given its season list
-    (from get_show_details). Returns {season_number, episode_number} or None
-    if there's no next episode (fully watched or nothing aired yet).
+    Single-show version: queries this one show's check-ins, then delegates
+    to _compute_next_episode. Fine for single-show pages (show_detail),
+    but pages that loop over many shows (Watchlist) should fetch all
+    check-ins once up front and call _compute_next_episode directly --
+    see watchlist() below -- to avoid one DB round trip per show.
     """
     watched = {
         (c.season_number, c.episode_number)
         for c in EpisodeCheckIn.query.filter_by(user_id=user_id, tmdb_show_id=tv_id).all()
     }
+    return _compute_next_episode(watched, seasons)
 
+def _compute_next_episode(watched_set, seasons):
+    """
+    Pure function, no DB access: given a set of (season_number,
+    episode_number) tuples already watched, and a show's season list,
+    returns the first unwatched {season_number, episode_number}, or None.
+    """
     for season in seasons:
         season_num = season["season_number"]
         for ep_num in range(1, season["episode_count"] + 1):
-            if (season_num, ep_num) not in watched:
+            if (season_num, ep_num) not in watched_set:
                 return {"season_number": season_num, "episode_number": ep_num}
     return None
+
 
 
 @shows_bp.route("/show/<media_type>/<int:tmdb_id>")
@@ -282,6 +293,12 @@ def watchlist():
     Shows the next unwatched episode for every TV show you're tracking
     (excluding dropped shows). Shows you haven't touched in 30+ days get
     bucketed separately so they don't get lost among active ones.
+
+    Fetches show/season data in bulk with cache-misses resolved in
+    parallel (see app/services/tmdb_cache.py) rather than looping over
+    shows one at a time -- with a large tracked list (e.g. after a TV Time
+    import), sequential fetching is the actual bottleneck, not just "cold
+    cache vs warm cache".
     """
     tracked = (
         LibraryItem.query.filter_by(user_id=current_user.id, media_type="tv")
@@ -290,39 +307,74 @@ def watchlist():
     )
 
     now = datetime.utcnow()
+
+    # Phase 1: get show details (seasons list + poster) for every tracked
+    # show in one batch, fetching any cache misses concurrently.
+    show_details_map = tmdb_cache.get_shows_details_bulk([item.tmdb_id for item in tracked])
+
+    # Fetch every check-in for this user in ONE query and group by show.
+    # Querying per-show here was the actual bottleneck on a remote DB like
+    # Supabase: each query is a network round trip, so 250 tracked shows
+    # meant 250+ round trips just for this, independent of the TMDB caching.
+    tracked_ids = [item.tmdb_id for item in tracked]
+    all_checkins = (
+        EpisodeCheckIn.query.filter(
+            EpisodeCheckIn.user_id == current_user.id,
+            EpisodeCheckIn.tmdb_show_id.in_(tracked_ids),
+        ).all()
+        if tracked_ids
+        else []
+    )
+    checkins_by_show = {}
+    for c in all_checkins:
+        checkins_by_show.setdefault(c.tmdb_show_id, []).append(c)
+
+    # Phase 2: figure out each show's next unwatched episode. Pure
+    # in-memory computation now -- no per-show DB query.
+    next_episode_map = {}
+    for item in tracked:
+        details = show_details_map.get(item.tmdb_id)
+        if not details:
+            continue
+        watched_set = {
+            (c.season_number, c.episode_number) for c in checkins_by_show.get(item.tmdb_id, [])
+        }
+        next_ep = _compute_next_episode(watched_set, details.get("seasons", []))
+        if next_ep:
+            next_episode_map[item.tmdb_id] = next_ep
+
+    # Phase 3: fetch episode name/still only for the specific seasons we
+    # actually need (one per show with a next episode), again in one
+    # batch with parallel cache-miss resolution.
+    season_keys = [
+        (tmdb_id, ep["season_number"]) for tmdb_id, ep in next_episode_map.items()
+    ]
+    season_map = tmdb_cache.get_seasons_bulk(season_keys)
+
     continuing = []
     stale = []
 
     for item in tracked:
-        try:
-            details = tmdb.get_show_details("tv", item.tmdb_id)
-        except Exception:
-            continue
-
-        seasons = details.get("seasons", [])
-        next_episode = _next_episode_for(current_user.id, item.tmdb_id, seasons)
+        next_episode = next_episode_map.get(item.tmdb_id)
         if not next_episode:
-            continue
+            continue  # fully caught up, or TMDB couldn't return details
 
-        episode_name = None
-        still_url = None
-        try:
-            season_episodes = tmdb.get_season_episodes(item.tmdb_id, next_episode["season_number"])
-            match = next(
-                (e for e in season_episodes if e["episode_number"] == next_episode["episode_number"]),
-                None,
-            )
-            if match:
-                episode_name = match.get("name")
-                still_url = match.get("still_url")
-        except Exception:
-            pass
+        details = show_details_map.get(item.tmdb_id, {})
+        episodes = season_map.get((item.tmdb_id, next_episode["season_number"]), [])
+        match = next(
+            (e for e in episodes if e["episode_number"] == next_episode["episode_number"]),
+            None,
+        )
+        episode_name = match.get("name") if match else None
+        still_url = match.get("still_url") if match else None
 
         last_checkin = (
             EpisodeCheckIn.query.filter_by(user_id=current_user.id, tmdb_show_id=item.tmdb_id)
             .order_by(EpisodeCheckIn.watched_at.desc())
             .first()
         )
+        show_checkins = checkins_by_show.get(item.tmdb_id, [])
+        last_checkin = max(show_checkins, key=lambda c: c.watched_at, default=None)
         last_activity_at = last_checkin.watched_at if last_checkin else item.added_at
         days_since = (now - last_activity_at).days
 
