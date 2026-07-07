@@ -368,11 +368,6 @@ def watchlist():
         episode_name = match.get("name") if match else None
         still_url = match.get("still_url") if match else None
 
-        last_checkin = (
-            EpisodeCheckIn.query.filter_by(user_id=current_user.id, tmdb_show_id=item.tmdb_id)
-            .order_by(EpisodeCheckIn.watched_at.desc())
-            .first()
-        )
         show_checkins = checkins_by_show.get(item.tmdb_id, [])
         last_checkin = max(show_checkins, key=lambda c: c.watched_at, default=None)
         last_activity_at = last_checkin.watched_at if last_checkin else item.added_at
