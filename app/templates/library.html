@@ -6,6 +6,19 @@
   <a href="{{ url_for('shows.search') }}" class="btn btn-primary">+ Add a show</a>
 </div>
 
+<section class="rate-section">
+  <h2>Import from TV Time</h2>
+  <p class="feed-subtitle" style="margin-bottom: 12px;">
+    Upload your TV Time JSON export. Shows are matched to TMDB automatically --
+    this can take a minute or two for a large export.
+  </p>
+  <form method="POST" action="{{ url_for('library.import_tvtime') }}" enctype="multipart/form-data" class="import-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="tvtime_file" accept="application/json,.json" required>
+    <button type="submit" class="btn btn-primary">Import</button>
+  </form>
+</section>
+
 {% if items %}
 <div class="grid">
   {% for item in items %}

@@ -17,18 +17,29 @@
 
 <div class="grid">
   {% for r in results %}
-  <a class="card search-card" href="{{ url_for('shows.show_detail', media_type=r.media_type, tmdb_id=r.tmdb_id) }}">
-    {% if r.poster_url %}
-      <img src="{{ r.poster_url }}" alt="{{ r.title }}" class="poster">
-    {% else %}
-      <div class="poster poster-placeholder">No Image</div>
+  <div class="card search-card">
+    <a href="{{ url_for('shows.show_detail', media_type=r.media_type, tmdb_id=r.tmdb_id) }}">
+      {% if r.poster_url %}
+        <img src="{{ r.poster_url }}" alt="{{ r.title }}" class="poster">
+      {% else %}
+        <div class="poster poster-placeholder">No Image</div>
+      {% endif %}
+      <div class="card-body">
+        <div class="card-title">{{ r.title }} <span class="year">({{ r.year }})</span></div>
+        <span class="badge badge-type">{{ "Movie" if r.media_type == "movie" else "TV" }}</span>
+        <p class="comment">{{ r.overview[:140] }}{% if r.overview|length > 140 %}…{% endif %}</p>
+      </div>
+    </a>
+    {% if r.media_type == "tv" %}
+    <form method="POST" action="{{ url_for('shows.set_status', media_type=r.media_type, tmdb_id=r.tmdb_id) }}" class="inline-form search-card-actions">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="plan_to_watch">
+      <input type="hidden" name="title" value="{{ r.title }}">
+      <input type="hidden" name="poster_path" value="{{ r.poster_url or '' }}">
+      <button type="submit" class="btn btn-small btn-secondary">+ Interested</button>
+    </form>
     {% endif %}
-    <div class="card-body">
-      <div class="card-title">{{ r.title }} <span class="year">({{ r.year }})</span></div>
-      <span class="badge badge-type">{{ "Movie" if r.media_type == "movie" else "TV" }}</span>
-      <p class="comment">{{ r.overview[:140] }}{% if r.overview|length > 140 %}…{% endif %}</p>
-    </div>
-  </a>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}

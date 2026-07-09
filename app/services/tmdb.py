@@ -3,6 +3,13 @@ from flask import current_app
 
 POSTER_BASE = "https://image.tmdb.org/t/p/w342"
 
+# Every outbound TMDB call gets this timeout. Without one, requests will
+# happily hang forever on a slow/stalled connection -- and since the TV Time
+# import calls find_tv_by_tvdb_id once per show synchronously, a single hung
+# connection would tie up the whole import request (and its worker)
+# indefinitely.
+REQUEST_TIMEOUT = 8  # seconds
+
 
 def _headers():
     return {
@@ -21,7 +28,10 @@ def search_shows(query):
 
     url = f"{current_app.config['TMDB_BASE_URL']}/search/multi"
     resp = requests.get(
-        url, headers=_headers(), params={"query": query, "include_adult": "false"}
+        url,
+        headers=_headers(),
+        params={"query": query, "include_adult": "false"},
+        timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
     results = resp.json().get("results", [])
@@ -53,7 +63,7 @@ def get_show_details(media_type, tmdb_id):
     For TV shows, includes the season list (season_number, episode_count).
     """
     url = f"{current_app.config['TMDB_BASE_URL']}/{media_type}/{tmdb_id}"
-    resp = requests.get(url, headers=_headers())
+    resp = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
 
@@ -87,13 +97,41 @@ def get_show_details(media_type, tmdb_id):
     return result
 
 
+def find_tv_by_tvdb_id(tvdb_id):
+    """
+    Converts a TVDB show ID (what TV Time exports use) into TMDB TV data,
+    via TMDB's /find endpoint. Returns {tmdb_id, title, poster_url} or None
+    if there's no match. The /find response already includes poster_path,
+    so this avoids a second API call just to get the poster.
+    """
+    url = f"{current_app.config['TMDB_BASE_URL']}/find/{tvdb_id}"
+    resp = requests.get(
+        url,
+        headers=_headers(),
+        params={"external_source": "tvdb_id"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("tv_results", [])
+    if not results:
+        return None
+
+    r = results[0]
+    poster_path = r.get("poster_path")
+    return {
+        "tmdb_id": r["id"],
+        "title": r.get("name"),
+        "poster_url": f"{POSTER_BASE}{poster_path}" if poster_path else None,
+    }
+
+
 def get_season_episodes(tv_id, season_number):
     """
     Fetches the episode list for one season of a TV show.
     Returns [{episode_number, name, air_date, overview, still_url}, ...]
     """
     url = f"{current_app.config['TMDB_BASE_URL']}/tv/{tv_id}/season/{season_number}"
-    resp = requests.get(url, headers=_headers())
+    resp = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
 

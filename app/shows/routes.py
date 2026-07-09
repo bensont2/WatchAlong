@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import LibraryItem, EpisodeCheckIn, User
 from app.services import tmdb
 from app.services import tmdb_cache
+from app.services.library_status import sync_show_completion
 
 
 @shows_bp.route("/search")
@@ -85,6 +86,7 @@ def show_detail(media_type, tmdb_id):
     selected_season = None
     watched_set = set()
     comments_by_episode = {}
+    watched_at_by_episode = {}
     next_episode = None
 
     if media_type == "tv" and details.get("seasons"):
@@ -100,6 +102,7 @@ def show_detail(media_type, tmdb_id):
             for c in season_checkins
             if c.comment
         }
+        watched_at_by_episode = {c.episode_number: c.watched_at for c in season_checkins}
 
         next_episode = _next_episode_for(current_user.id, tmdb_id, details["seasons"])
 
@@ -112,6 +115,7 @@ def show_detail(media_type, tmdb_id):
         selected_season=selected_season,
         watched_set=watched_set,
         comments_by_episode=comments_by_episode,
+        watched_at_by_episode=watched_at_by_episode,
         next_episode=next_episode,
     )
 
@@ -144,6 +148,8 @@ def toggle_episode(tmdb_id):
 
     if existing:
         db.session.delete(existing)
+        db.session.flush()
+        sync_show_completion(current_user.id, tmdb_id)
         db.session.commit()
         return jsonify({"watched": False})
 
@@ -169,6 +175,8 @@ def toggle_episode(tmdb_id):
         )
         db.session.add(library_item)
 
+    db.session.flush()
+    sync_show_completion(current_user.id, tmdb_id)
     db.session.commit()
     return jsonify({"watched": True})
 
@@ -286,6 +294,23 @@ def rate_show(media_type, tmdb_id):
     return redirect(url_for("shows.show_detail", media_type=media_type, tmdb_id=tmdb_id))
 
 
+@shows_bp.route("/interested")
+@login_required
+def interested():
+    """
+    Shows/movies the user has flagged but hasn't watched a single episode
+    of yet. Anything here has status "plan_to_watch" and 0 checkins. The
+    moment the first episode gets checked off (toggle_episode), the show
+    is bumped to "watching" and moves onto the Library + Watchlist instead.
+    """
+    items = (
+        LibraryItem.query.filter_by(user_id=current_user.id, status="plan_to_watch")
+        .order_by(LibraryItem.added_at.desc())
+        .all()
+    )
+    return render_template("interested.html", items=items)
+
+
 @shows_bp.route("/watchlist")
 @login_required
 def watchlist():
@@ -302,7 +327,7 @@ def watchlist():
     """
     tracked = (
         LibraryItem.query.filter_by(user_id=current_user.id, media_type="tv")
-        .filter(LibraryItem.status != "dropped")
+        .filter(LibraryItem.status.notin_(["dropped", "plan_to_watch"]))
         .all()
     )
 

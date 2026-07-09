@@ -23,6 +23,16 @@
     {% elif show.media_type == "tv" and my_item %}
       <div class="next-up next-up-done">All caught up 🎉</div>
     {% endif %}
+
+    {% if show.media_type == "tv" and not my_item %}
+      <form method="POST" action="{{ url_for('shows.set_status', media_type=show.media_type, tmdb_id=show.tmdb_id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="plan_to_watch">
+        <input type="hidden" name="title" value="{{ show.title }}">
+        <input type="hidden" name="poster_path" value="{{ show.poster_url or '' }}">
+        <button type="submit" class="btn btn-small btn-secondary">+ I'm interested</button>
+      </form>
+    {% endif %}
   </div>
 </div>
 
@@ -87,6 +97,9 @@
             {{ ep.name }}
           </div>
           {% if ep.air_date %}<span class="episode-air-date">{{ ep.air_date }}</span>{% endif %}
+          {% if ep.episode_number in watched_at_by_episode %}
+            <span class="episode-watched-date">Watched {{ watched_at_by_episode[ep.episode_number].strftime("%b %d, %Y") }}</span>
+          {% endif %}
         </div>
       </a>
       <label class="episode-watched-toggle">
