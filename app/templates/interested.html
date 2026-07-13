@@ -4,12 +4,11 @@
 <h1>Interested</h1>
 <p class="feed-subtitle">
   Shows you've flagged but haven't started yet. Check off a first episode
-  and it'll move over to your Library and Watchlist automatically.
+  and it'll move over to your Library and Watchlist automatically. Movies
+  move over once you mark them watched.
 </p>
 
-{% if items %}
-<div class="grid">
-  {% for item in items %}
+{% macro item_card(item) %}
   <div class="card">
     {% if item.poster_path %}
       <a href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">
@@ -19,15 +18,35 @@
     <div class="card-body">
       <a class="card-title" href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}">{{ item.title }}</a>
       <span class="badge badge-status">Interested</span>
-      <a href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}" class="btn btn-small btn-primary">Start Watching</a>
+      <a href="{{ url_for('shows.show_detail', media_type=item.media_type, tmdb_id=item.tmdb_id) }}" class="btn btn-small btn-primary">
+        {{ "Mark as Watched" if item.media_type == "movie" else "Start Watching" }}
+      </a>
       <form method="POST" action="{{ url_for('library.delete_item', item_id=item.id) }}" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-danger btn-small">Remove</button>
       </form>
     </div>
   </div>
-  {% endfor %}
-</div>
+{% endmacro %}
+
+{% if tv_items or movie_items %}
+  {% if tv_items %}
+  <section class="watchlist-section">
+    <h2>TV Shows</h2>
+    <div class="grid">
+      {% for item in tv_items %}{{ item_card(item) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if movie_items %}
+  <section class="watchlist-section">
+    <h2>Movies</h2>
+    <div class="grid">
+      {% for item in movie_items %}{{ item_card(item) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
 {% else %}
 <p class="empty-state">Nothing here yet. <a href="{{ url_for('shows.search') }}">Search for a show</a> and mark it "I'm interested" to add it here.</p>
 {% endif %}

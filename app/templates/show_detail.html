@@ -22,15 +22,29 @@
       </div>
     {% elif show.media_type == "tv" and my_item %}
       <div class="next-up next-up-done">All caught up 🎉</div>
+    {% elif show.media_type == "movie" and my_item and my_item.status == "completed" %}
+      <div class="next-up next-up-done">Watched ✓</div>
     {% endif %}
 
-    {% if show.media_type == "tv" and not my_item %}
+    {% if not my_item %}
+      {# Movies have no episodes to check off, so "Interested" is the only
+         way (besides rating) to get a movie into the library at all. #}
       <form method="POST" action="{{ url_for('shows.set_status', media_type=show.media_type, tmdb_id=show.tmdb_id) }}" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="status" value="plan_to_watch">
         <input type="hidden" name="title" value="{{ show.title }}">
         <input type="hidden" name="poster_path" value="{{ show.poster_url or '' }}">
         <button type="submit" class="btn btn-small btn-secondary">+ I'm interested</button>
+      </form>
+    {% elif show.media_type == "movie" and my_item.status != "completed" %}
+      {# Movie is tracked (e.g. still "Interested") but not marked watched
+         yet -- give it the equivalent of a TV show's episode checkbox. #}
+      <form method="POST" action="{{ url_for('shows.set_status', media_type='movie', tmdb_id=show.tmdb_id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="completed">
+        <input type="hidden" name="title" value="{{ show.title }}">
+        <input type="hidden" name="poster_path" value="{{ show.poster_url or '' }}">
+        <button type="submit" class="btn btn-small btn-primary">Mark as Watched</button>
       </form>
     {% endif %}
   </div>

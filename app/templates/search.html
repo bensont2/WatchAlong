@@ -38,6 +38,25 @@
       <input type="hidden" name="poster_path" value="{{ r.poster_url or '' }}">
       <button type="submit" class="btn btn-small btn-secondary">+ Interested</button>
     </form>
+    {% else %}
+    {# Movies have no episodes to check off, so give both options right
+       from search: flag for later, or log it as already watched. #}
+    <div class="search-card-actions">
+      <form method="POST" action="{{ url_for('shows.set_status', media_type=r.media_type, tmdb_id=r.tmdb_id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="plan_to_watch">
+        <input type="hidden" name="title" value="{{ r.title }}">
+        <input type="hidden" name="poster_path" value="{{ r.poster_url or '' }}">
+        <button type="submit" class="btn btn-small btn-secondary">+ Interested</button>
+      </form>
+      <form method="POST" action="{{ url_for('shows.set_status', media_type=r.media_type, tmdb_id=r.tmdb_id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="completed">
+        <input type="hidden" name="title" value="{{ r.title }}">
+        <input type="hidden" name="poster_path" value="{{ r.poster_url or '' }}">
+        <button type="submit" class="btn btn-small btn-primary">✓ Watched</button>
+      </form>
+    </div>
     {% endif %}
   </div>
   {% endfor %}
@@ -119,4 +138,3 @@
 })();
 </script>
 {% endblock %}
-

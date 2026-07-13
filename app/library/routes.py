@@ -28,6 +28,7 @@ MAX_IMPORT_EPISODES_PER_SHOW = 2000
 def view_library():
     items = (
         LibraryItem.query.filter_by(user_id=current_user.id)
+        .filter(LibraryItem.status != "plan_to_watch")
         .order_by(LibraryItem.updated_at.desc())
         .all()
     )

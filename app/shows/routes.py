@@ -281,7 +281,7 @@ def rate_show(media_type, tmdb_id):
             rating=rating,
             comment=comment or None,
             is_public=is_public,
-            status="completed" if rating else "watching",
+            status="completed" if (rating or media_type == "movie") else "watching",
         )
         db.session.add(item)
 
@@ -300,15 +300,21 @@ def interested():
     """
     Shows/movies the user has flagged but hasn't watched a single episode
     of yet. Anything here has status "plan_to_watch" and 0 checkins. The
-    moment the first episode gets checked off (toggle_episode), the show
-    is bumped to "watching" and moves onto the Library + Watchlist instead.
+    moment the first episode gets checked off (toggle_episode) -- or, for
+    movies, "Mark as Watched" -- the item is bumped off "plan_to_watch"
+    and moves onto the Library instead.
+
+    Split into tv_items / movie_items (rather than one mixed list) so the
+    template can section them under separate headings.
     """
     items = (
         LibraryItem.query.filter_by(user_id=current_user.id, status="plan_to_watch")
         .order_by(LibraryItem.added_at.desc())
         .all()
     )
-    return render_template("interested.html", items=items)
+    tv_items = [i for i in items if i.media_type == "tv"]
+    movie_items = [i for i in items if i.media_type == "movie"]
+    return render_template("interested.html", tv_items=tv_items, movie_items=movie_items)
 
 
 @shows_bp.route("/watchlist")
